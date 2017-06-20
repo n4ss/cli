@@ -55,6 +55,7 @@ type containerOptions struct {
 	extraHosts         opts.ListOpts
 	volumesFrom        opts.ListOpts
 	envFile            opts.ListOpts
+	entitlements       opts.ListOpts
 	capAdd             opts.ListOpts
 	capDrop            opts.ListOpts
 	groupAdd           opts.ListOpts
@@ -140,6 +141,7 @@ func addFlags(flags *pflag.FlagSet) *containerOptions {
 		deviceWriteBps:    opts.NewThrottledeviceOpt(opts.ValidateThrottleBpsDevice),
 		deviceWriteIOps:   opts.NewThrottledeviceOpt(opts.ValidateThrottleIOpsDevice),
 		devices:           opts.NewListOpts(validateDevice),
+		entitlements:  	   opts.NewListOpts(nil),
 		env:               opts.NewListOpts(opts.ValidateEnv),
 		envFile:           opts.NewListOpts(nil),
 		expose:            opts.NewListOpts(nil),
@@ -185,6 +187,7 @@ func addFlags(flags *pflag.FlagSet) *containerOptions {
 	flags.BoolVar(&copts.autoRemove, "rm", false, "Automatically remove the container when it exits")
 
 	// Security
+	flags.Var(&copts.entitlements, "entitlements", "Request entitlements")
 	flags.Var(&copts.capAdd, "cap-add", "Add Linux capabilities")
 	flags.Var(&copts.capDrop, "cap-drop", "Drop Linux capabilities")
 	flags.BoolVar(&copts.privileged, "privileged", false, "Give extended privileges to this container")
@@ -587,6 +590,7 @@ func parse(flags *pflag.FlagSet, copts *containerOptions) (*containerConfig, err
 		PidMode:        pidMode,
 		UTSMode:        utsMode,
 		UsernsMode:     usernsMode,
+		Entitlements:	strslice.StrSlice(copts.entitlements.GetAll()),
 		CapAdd:         strslice.StrSlice(copts.capAdd.GetAll()),
 		CapDrop:        strslice.StrSlice(copts.capDrop.GetAll()),
 		GroupAdd:       copts.groupAdd.GetAll(),
