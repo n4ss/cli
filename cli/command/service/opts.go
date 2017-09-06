@@ -493,6 +493,8 @@ type serviceOptions struct {
 	networks       opts.NetworkOpt
 	endpoint       endpointOptions
 
+	entitlements   opts.ListOpts
+
 	registryAuth   bool
 	noResolveImage bool
 
@@ -505,6 +507,7 @@ type serviceOptions struct {
 
 func newServiceOptions() *serviceOptions {
 	return &serviceOptions{
+		entitlements:	 opts.NewListOpts(nil),
 		labels:          opts.NewListOpts(opts.ValidateEnv),
 		constraints:     opts.NewListOpts(nil),
 		containerLabels: opts.NewListOpts(opts.ValidateEnv),
@@ -799,6 +802,7 @@ const (
 	flagDNSSearchAdd            = "dns-search-add"
 	flagEndpointMode            = "endpoint-mode"
 	flagEntrypoint              = "entrypoint"
+	flagEntitlements            = "entitlements"
 	flagHost                    = "host"
 	flagHostAdd                 = "host-add"
 	flagHostRemove              = "host-rm"
