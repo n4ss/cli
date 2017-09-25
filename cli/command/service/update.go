@@ -69,6 +69,8 @@ func newUpdateCommand(dockerCli *command.DockerCli) *cobra.Command {
 	flags.Var(&options.secrets, flagSecretAdd, "Add or update a secret on a service")
 	flags.SetAnnotation(flagSecretAdd, "version", []string{"1.25"})
 
+	flags.Var(&options.entitlements, flagEntitlements, "Entitlements to give to the service")
+
 	flags.Var(newListOptsVar(), flagConfigRemove, "Remove a configuration file")
 	flags.SetAnnotation(flagConfigRemove, "version", []string{"1.30"})
 	flags.Var(&options.configs, flagConfigAdd, "Add or update a config file on a service")

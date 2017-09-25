@@ -74,6 +74,12 @@ func runCreate(dockerCli *command.DockerCli, flags *pflag.FlagSet, opts *service
 		return err
 	}
 
+	specifiedEntitlements := opts.entitlements.GetAll()
+	if len(specifiedEntitlements) > 0 {
+		// Validation should be done at the daemon level
+		service.TaskTemplate.Entitlements = specifiedEntitlements
+	}
+
 	specifiedSecrets := opts.secrets.Value()
 	if len(specifiedSecrets) > 0 {
 		// parse and validate secrets
