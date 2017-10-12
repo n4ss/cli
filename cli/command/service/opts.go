@@ -622,6 +622,7 @@ func (opts *serviceOptions) ToService(ctx context.Context, apiClient client.Netw
 				Preferences: opts.placementPrefs.prefs,
 			},
 			LogDriver: opts.logDriver.toLogDriver(),
+			Entitlements: opts.entitlements.GetAll(),
 		},
 		Mode:           serviceMode,
 		UpdateConfig:   opts.update.updateConfig(flags),

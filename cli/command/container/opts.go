@@ -558,6 +558,7 @@ func parse(flags *pflag.FlagSet, copts *containerOptions) (*containerConfig, err
 		WorkingDir:      copts.workingDir,
 		Labels:          runconfigopts.ConvertKVStringsToMap(labels),
 		Healthcheck:     healthConfig,
+		Entitlements:	 strslice.StrSlice(copts.entitlements.GetAll()),
 	}
 	if flags.Changed("stop-signal") {
 		config.StopSignal = copts.stopSignal
@@ -590,7 +591,6 @@ func parse(flags *pflag.FlagSet, copts *containerOptions) (*containerConfig, err
 		PidMode:        pidMode,
 		UTSMode:        utsMode,
 		UsernsMode:     usernsMode,
-		Entitlements:	strslice.StrSlice(copts.entitlements.GetAll()),
 		CapAdd:         strslice.StrSlice(copts.capAdd.GetAll()),
 		CapDrop:        strslice.StrSlice(copts.capDrop.GetAll()),
 		GroupAdd:       copts.groupAdd.GetAll(),
