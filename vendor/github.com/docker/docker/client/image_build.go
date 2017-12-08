@@ -46,9 +46,10 @@ func (cli *Client) ImageBuild(ctx context.Context, buildContext io.Reader, optio
 
 func (cli *Client) imageBuildOptionsToQuery(options types.ImageBuildOptions) (url.Values, error) {
 	query := url.Values{
-		"t":           options.Tags,
-		"securityopt": options.SecurityOpt,
-		"extrahosts":  options.ExtraHosts,
+		"t":            options.Tags,
+		"securityopt":  options.SecurityOpt,
+		"extrahosts":   options.ExtraHosts,
+		"entitlements": options.Entitlements,
 	}
 	if options.SuppressOutput {
 		query.Set("q", "1")
