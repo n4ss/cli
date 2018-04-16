@@ -17,6 +17,7 @@ func newTrustKeyCommand(dockerCli command.Streams) *cobra.Command {
 	cmd.AddCommand(
 		newKeyGenerateCommand(dockerCli),
 		newKeyLoadCommand(dockerCli),
+		newKeyListCommand(dockerCli),
 	)
 	return cmd
 }
