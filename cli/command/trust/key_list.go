@@ -72,7 +72,7 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 			keyInfo = res
 		} else {
 			// Get signed tags & signers info once per GUN
-			trustTags, adminRolesWithSigs, delegationRoles, err := lookupTrustInfo(dockerCli, string(info.Gun))
+			trustTags, _, _, err := lookupTrustInfo(dockerCli, string(info.Gun))
 			if err != nil {
 				return err
 			}
@@ -83,10 +83,12 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 					Digest: trustTag.Digest,
 					Signers: trustTag.Signers,
 				}
+				signedTagsInfo = append(signedTagsInfo, signedTagInfo)
 			}
 
 			keyInfo = imageKeysInfo{
 				image: info.Gun,
+				tagsToSigners: signedTagsInfo,
 			}
 		}
 
