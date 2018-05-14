@@ -23,7 +23,7 @@ type imageKeysInfo struct {
 	tagsToSigners []formatter.SignedTagInfo
 }
 
-func newKeyListCommand(dockerCli command.Streams) *cobra.Command {
+func newKeyListCommand(dockerCli command.Cli) *cobra.Command {
 	var options keyListOptions
 	cmd := &cobra.Command{
 		Use:   "list [OPTIONS]",
@@ -38,7 +38,7 @@ func newKeyListCommand(dockerCli command.Streams) *cobra.Command {
 	return cmd
 }
 
-func listKeys(dockerCli command.Streams, options keyListOptions) error {
+func listKeys(dockerCli command.Cli, options keyListOptions) error {
 	trustDir := trust.GetTrustDirectory()
 	passRetriever := trust.GetPassphraseRetriever(dockerCli.In(), dockerCli.Out())
 
@@ -50,18 +50,58 @@ func listKeys(dockerCli command.Streams, options keyListOptions) error {
 	ks := trustmanager.KeyStore(keyFileStore)
 	// TODO(n4ss): does Docker support (or plan to) having the trust config on a Yubikey?
 	// if so we should addd it to the keyStores to inspect and display
-	prettyPrintKeysFromKeyStore(ks)
+	if err := prettyPrintKeysFromKeyStore(dockerCli, ks) ; err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func prettyPrintKeysFromKeyStore(ks trustmanager.KeyStore) {
-	keyIDsToInfos := ks.ListKeys()
+func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore) error {
+	keyIDsToInfo := ks.ListKeys()
 
 	// Per Image (GUN) -> Per Tag -> Per Signer
 	// 		- Root key, Repository key
 	// 		- [Signer (we only have roles), abbreviated Key ID | verbose(full ID), Role, verbose(location), verbose(date)]
 	gunToImageKeysInfo := make(map[data.GUN]imageKeysInfo)
+	for keyID, info := range keyIDsToInfo {
+		var keyInfo imageKeysInfo
+		var signedTagsInfo []formatter.SignedTagInfo
+
+		if res, ok := gunToImageKeysInfo[info.Gun]; ok {
+			keyInfo = res
+		} else {
+			// Get signed tags & signers info once per GUN
+			trustTags, adminRolesWithSigs, delegationRoles, err := lookupTrustInfo(dockerCli, string(info.Gun))
+			if err != nil {
+				return err
+			}
+
+			for _, trustTag := range trustTags {
+				signedTagInfo := formatter.SignedTagInfo{
+					Name: trustTag.SignedTag,
+					Digest: trustTag.Digest,
+					Signers: trustTag.Signers,
+				}
+			}
+
+			keyInfo = imageKeysInfo{
+				image: info.Gun,
+			}
+		}
+
+		switch info.Role {
+		case data.CanonicalTargetsRole:
+			keyInfo.repo = keyID
+		case data.CanonicalRootRole:
+			keyInfo.root = keyID
+		}
+
+		gunToImageKeysInfo[info.Gun] = keyInfo
+	}
+
+	return nil
+
 
 	// TODO(nass): use a formatter to display (no-verbose mode)
 	//
