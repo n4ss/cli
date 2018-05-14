@@ -7,9 +7,13 @@ import (
 	"github.com/docker/cli/cli/command/formatter"
 
 	"github.com/spf13/cobra"
+	"github.com/theupdateframework/notary/client"
 	"github.com/theupdateframework/notary/trustmanager"
 	"github.com/theupdateframework/notary/tuf/data"
+	"fmt"
 )
+
+var rolesByKeyID map[string]data.RoleName
 
 type keyListOptions struct {
 	// Display keys with their full digest instead of abbreviated one
@@ -21,6 +25,11 @@ type imageKeysInfo struct {
 	root string
 	repo string
 	tagsToSigners []formatter.SignedTagInfo
+}
+
+type keyInfo struct {
+	imageInfo imageKeysInfo
+	roles []data.RoleName
 }
 
 func newKeyListCommand(dockerCli command.Cli) *cobra.Command {
@@ -50,29 +59,65 @@ func listKeys(dockerCli command.Cli, options keyListOptions) error {
 	ks := trustmanager.KeyStore(keyFileStore)
 	// TODO(n4ss): does Docker support (or plan to) having the trust config on a Yubikey?
 	// if so we should addd it to the keyStores to inspect and display
-	if err := prettyPrintKeysFromKeyStore(dockerCli, ks) ; err != nil {
+
+	if err := prettyPrintKeysFromKeyStore(dockerCli, ks, options.verbose) ; err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore) error {
+func registerKeyIDsForRolesWithSigs(rolesWithSigs []client.RoleWithSignatures) {
+	for _, roleWithSigs := range rolesWithSigs {
+		// FIXME: are we sure that KeyIDs are updated here?
+		keyIDs := roleWithSigs.KeyIDs
+
+		for _, keyID := range(keyIDs) {
+			rolesByKeyID[keyID] = roleWithSigs.Name
+		}
+	}
+}
+
+func registerKeyIDsForRoles(roles []data.Role) {
+	for _, role := range roles {
+		keyIDs := role.KeyIDs
+
+		for _, keyID := range(keyIDs) {
+			rolesByKeyID[keyID] = role.Name
+		}
+	}
+}
+
+func getRoleByKeyID(keyID string) (data.RoleName, error) {
+	res, ok := rolesByKeyID[keyID]
+	if !ok {
+		return "", fmt.Errorf("key ID: \"%s\" is not associated to a role", keyID)
+	}
+
+	return res, nil
+}
+
+func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, verbose bool) error {
 	keyIDsToInfo := ks.ListKeys()
 
-	// Per Image (GUN) -> Per Tag -> Per Signer
+	// Per Image (GUN)
 	// 		- Root key, Repository key
-	// 		- [Signer (we only have roles), abbreviated Key ID | verbose(full ID), Role, verbose(location), verbose(date)]
+	// ==> Per Tag
+	// 			- Signer (we only have roles)
+	// 			- abbreviated Key ID | verbose(full ID)
+	// 			- Role
+	// 			- TODO(nass): verbose(filesystem location), verbose(date) and other metadata..
 	gunToImageKeysInfo := make(map[data.GUN]imageKeysInfo)
 	for keyID, info := range keyIDsToInfo {
-		var keyInfo imageKeysInfo
+		var imageInfo imageKeysInfo
+		var keyInfo keyInfo
 		var signedTagsInfo []formatter.SignedTagInfo
 
 		if res, ok := gunToImageKeysInfo[info.Gun]; ok {
-			keyInfo = res
+			imageInfo = res
 		} else {
 			// Get signed tags & signers info once per GUN
-			trustTags, _, _, err := lookupTrustInfo(dockerCli, string(info.Gun))
+			trustTags, adminRolesWithSigs, delegationRoles, err := lookupTrustInfo(dockerCli, string(info.Gun))
 			if err != nil {
 				return err
 			}
@@ -86,7 +131,10 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 				signedTagsInfo = append(signedTagsInfo, signedTagInfo)
 			}
 
-			keyInfo = imageKeysInfo{
+			registerKeyIDsForRolesWithSigs(adminRolesWithSigs)
+			registerKeyIDsForRoles(delegationRoles)
+
+			imageInfo = imageKeysInfo{
 				image: info.Gun,
 				tagsToSigners: signedTagsInfo,
 			}
@@ -94,18 +142,30 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 
 		switch info.Role {
 		case data.CanonicalTargetsRole:
-			keyInfo.repo = keyID
+			imageInfo.repo = keyID
 		case data.CanonicalRootRole:
-			keyInfo.root = keyID
+			imageInfo.root = keyID
 		}
 
-		gunToImageKeysInfo[info.Gun] = keyInfo
+		gunToImageKeysInfo[info.Gun] = imageInfo
 	}
+
+
 
 	return nil
 
+	// Current format
+	//
+	// User Keys : {
+	// 	key-id-1: {
+	// 		Role:	"role",
+	//		Applied on Images & Tags:
+	//			name: "repo/image:tag", digest: "digest", signers "signers",
+	//			name:
+	// 	}
+	// }
 
-	// TODO(nass): use a formatter to display (no-verbose mode)
+	// TODO(nass): use a formatter to display (no-verbose mode) [Preferred format]
 	//
 	// User Keys : {
     // 	 "<key-id1>" : {
