@@ -2,7 +2,7 @@ package trust
 
 import (
 	"github.com/docker/cli/cli"
-	command "github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/trust"
 	"github.com/docker/cli/cli/command/formatter"
 
@@ -11,25 +11,19 @@ import (
 	"github.com/theupdateframework/notary/trustmanager"
 	"github.com/theupdateframework/notary/tuf/data"
 	"fmt"
+	"encoding/json"
 )
 
-var rolesByKeyID map[string]data.RoleName
+const (
+	jsonFormat = "json"
+	prettyFormat = "pretty"
+)
+
+var rolesByKeyID = make(map[string][]data.RoleName)
 
 type keyListOptions struct {
-	// Display keys with their full digest instead of abbreviated one
-	verbose bool
-}
-
-type imageKeysInfo struct {
-	image data.GUN	// Reference to the image
-	root string
-	repo string
-	tagsToSigners []formatter.SignedTagInfo
-}
-
-type keyInfo struct {
-	imageInfo imageKeysInfo
-	roles []data.RoleName
+	verbose bool		// will display -when supported- additional info: added by, creation date
+	format string
 }
 
 func newKeyListCommand(dockerCli command.Cli) *cobra.Command {
@@ -44,6 +38,8 @@ func newKeyListCommand(dockerCli command.Cli) *cobra.Command {
 	}
 	flags := cmd.Flags()
 	flags.BoolVarP(&options.verbose, "verbose", "v", false, "Verbose output for all keys")
+	flags.StringVarP(&options.format, "format", "f", prettyFormat, fmt.Sprintf("Format the output, supported formats are: %s, %s", prettyFormat, jsonFormat))
+
 	return cmd
 }
 
@@ -57,10 +53,16 @@ func listKeys(dockerCli command.Cli, options keyListOptions) error {
 	}
 
 	ks := trustmanager.KeyStore(keyFileStore)
+
 	// TODO(n4ss): does Docker support (or plan to) having the trust config on a Yubikey?
 	// if so we should addd it to the keyStores to inspect and display
+	keysInfo, err := getKeysInfoFromKeyStore(dockerCli, ks, options.verbose)
+	if err != nil {
+		return err
+	}
 
-	if err := prettyPrintKeysFromKeyStore(dockerCli, ks, options.verbose) ; err != nil {
+	err = printKeysInfo(dockerCli, keysInfo, options.format, options.verbose)
+	if err != nil {
 		return err
 	}
 
@@ -72,8 +74,13 @@ func registerKeyIDsForRolesWithSigs(rolesWithSigs []client.RoleWithSignatures) {
 		// FIXME: are we sure that KeyIDs are updated here?
 		keyIDs := roleWithSigs.KeyIDs
 
-		for _, keyID := range(keyIDs) {
-			rolesByKeyID[keyID] = roleWithSigs.Name
+		for _, keyID := range keyIDs {
+			roles, ok := rolesByKeyID[keyID]
+			if !ok {
+				rolesByKeyID[keyID] = []data.RoleName{roleWithSigs.Name}
+			} else {
+				rolesByKeyID[keyID] = append(roles, roleWithSigs.Name)
+			}
 		}
 	}
 }
@@ -82,22 +89,27 @@ func registerKeyIDsForRoles(roles []data.Role) {
 	for _, role := range roles {
 		keyIDs := role.KeyIDs
 
-		for _, keyID := range(keyIDs) {
-			rolesByKeyID[keyID] = role.Name
+		for _, keyID := range keyIDs {
+			roles, ok := rolesByKeyID[keyID]
+			if !ok {
+				rolesByKeyID[keyID] = []data.RoleName{role.Name}
+			} else {
+				rolesByKeyID[keyID] = append(roles, role.Name)
+			}
 		}
 	}
 }
 
-func getRoleByKeyID(keyID string) (data.RoleName, error) {
+func getRolesByKeyID(keyID string) ([]data.RoleName, error) {
 	res, ok := rolesByKeyID[keyID]
 	if !ok {
-		return "", fmt.Errorf("key ID: \"%s\" is not associated to a role", keyID)
+		return nil, fmt.Errorf("key ID: \"%s\" is not associated to a role", keyID)
 	}
 
 	return res, nil
 }
 
-func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, verbose bool) error {
+func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, verbose bool) (map[string]formatter.KeyInfo, error) {
 	keyIDsToInfo := ks.ListKeys()
 
 	// Per Image (GUN)
@@ -107,19 +119,42 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 	// 			- abbreviated Key ID | verbose(full ID)
 	// 			- Role
 	// 			- TODO(nass): verbose(filesystem location), verbose(date) and other metadata..
-	gunToImageKeysInfo := make(map[data.GUN]imageKeysInfo)
+	keyIDToImageKeysInfo := make(map[string]formatter.KeyInfo)
 	for keyID, info := range keyIDsToInfo {
-		var imageInfo imageKeysInfo
-		var keyInfo keyInfo
 		var signedTagsInfo []formatter.SignedTagInfo
 
-		if res, ok := gunToImageKeysInfo[info.Gun]; ok {
-			imageInfo = res
-		} else {
-			// Get signed tags & signers info once per GUN
+		currKeyInfo, ok := keyIDToImageKeysInfo[keyID]
+		if !ok {
+			if len(info.Gun) == 0 {
+				// the key has no scope (no associated GUN) so we only format the role for this key
+				keyRole := ""
+				switch info.Role {
+				case data.CanonicalRootRole:
+					keyRole = "Root Key"
+				case data.CanonicalSnapshotRole:
+					keyRole = "Snapshot Key"
+				case data.CanonicalTargetsRole:
+					keyRole = "Repository Key"
+				case data.CanonicalTimestampRole:
+					keyRole = "Timestamp Key"
+				default:
+					keyRole = string(info.Role)
+				}
+
+				keyIDToImageKeysInfo[keyID] = formatter.KeyInfo{
+					Id: keyID,
+					RepoInfo: formatter.RepoTrustInfo{
+					},
+					Roles: []data.RoleName{data.RoleName(keyRole)},
+				}
+
+				continue
+			}
+
+			// Get signed tags for the key & key roles info once per GUN
 			trustTags, adminRolesWithSigs, delegationRoles, err := lookupTrustInfo(dockerCli, string(info.Gun))
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			for _, trustTag := range trustTags {
@@ -132,36 +167,54 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 			}
 
 			registerKeyIDsForRolesWithSigs(adminRolesWithSigs)
+
+			// TODO(nass) we should call getDelegationRoleToKeyMap instead
 			registerKeyIDsForRoles(delegationRoles)
 
-			imageInfo = imageKeysInfo{
-				image: info.Gun,
-				tagsToSigners: signedTagsInfo,
+			keyRoles, err := getRolesByKeyID(keyID)
+			if err != nil {
+				return nil, err
 			}
+
+			keyIDToImageKeysInfo[keyID] = formatter.KeyInfo{
+				Id: keyID,
+				RepoInfo: formatter.RepoTrustInfo{
+						Image:         info.Gun,
+						TagsToSigners: signedTagsInfo,
+						},
+				Roles: keyRoles,
+			}
+
+			continue
 		}
+
+		imageInfo := currKeyInfo.RepoInfo
+		keyRoles := currKeyInfo.Roles
 
 		switch info.Role {
 		case data.CanonicalTargetsRole:
-			imageInfo.repo = keyID
+			imageInfo.Repo = keyID
 		case data.CanonicalRootRole:
-			imageInfo.root = keyID
+			imageInfo.Root = keyID
 		}
 
-		gunToImageKeysInfo[info.Gun] = imageInfo
+		keyIDToImageKeysInfo[keyID] = formatter.KeyInfo{
+			Id: keyID,
+			RepoInfo: imageInfo,
+			Roles: keyRoles,
+		}
 	}
 
-
-
-	return nil
+	fmt.Fprintln(dockerCli.Out(), "getKeysInfoFromKeyStore - end")
+	return keyIDToImageKeysInfo, nil
 
 	// Current format
 	//
 	// User Keys : {
 	// 	key-id-1: {
 	// 		Role:	"role",
-	//		Applied on Images & Tags:
-	//			name: "repo/image:tag", digest: "digest", signers "signers",
-	//			name:
+	//		Applied on:
+	//			name: "repo/image:tag", digest: "digest",
 	// 	}
 	// }
 
@@ -209,4 +262,41 @@ func prettyPrintKeysFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore
 	// +--------+-------------+
 	// |        |             |
 	// +--------+-------------+
+ }
+
+ func printKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, format string, verbose bool) error {
+ 	switch format {
+	case jsonFormat:
+		return jsonPrintKeysInfo(dockerCli, keysInfo, verbose)
+	case prettyFormat:
+		return prettyPrintKeysInfo(dockerCli, keysInfo, verbose)
+	default:
+		return fmt.Errorf("Unknown specified format, supported formats are: %s, %s", jsonFormat, prettyFormat)
+	}
+ }
+
+ func jsonPrintKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, verbose bool) error {
+ 	 var infoList []formatter.KeyInfo
+	 for _, info := range keysInfo {
+	 	newInfo := info
+	 	if !verbose {
+	 		// this field is `omitempty' so emptying it removes it from the output
+	 		newInfo.RepoInfo = formatter.RepoTrustInfo{}
+		}
+		infoList = append(infoList, newInfo)
+	 }
+
+	 keysInfoJSON, err := json.MarshalIndent(infoList, "", "\t")
+	 if err != nil {
+		 return err
+	 }
+
+	 fmt.Fprintln(dockerCli.Out(), string(keysInfoJSON))
+
+ 	return nil
+ }
+
+ func prettyPrintKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, verbose bool) error {
+ 	// TODO(nass) use formatter package
+ 	return nil
  }
