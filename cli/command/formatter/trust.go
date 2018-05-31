@@ -48,9 +48,9 @@ type SignerInfo struct {
 // Repo: repository key (target key)
 // TagToSigners: list of signed tags with associated signing roles
 type RepoTrustInfo struct {
-	Image data.GUN	`json:"Image"`
-	Root string `json:"Root Key ID"`
-	Repo string `json:"Repository Key ID"`
+	Image data.GUN	`json:"Image, omitempty"`
+	Root string `json:"Root Key ID, omitempty"`
+	Repo string `json:"Repository Key ID, omitempty"`
 	TagsToSigners []SignedTagInfo `json:"Tags and Signers,omitempty"`
 }
 
@@ -60,7 +60,7 @@ type RepoTrustInfo struct {
 // Roles: roles for which this key is loaded
 type KeyInfo struct {
 	Id string				`json:"Key ID"`
-	RepoInfo RepoTrustInfo `json:"Repository Info, omitempty"`
+	RepoInfo RepoTrustInfo `json:"Repository Info"`
 	Roles []data.RoleName `json:"Roles"`
 }
 
@@ -200,7 +200,7 @@ func (c *keyInfoContext) Id() string {
 }
 
 func (c *keyInfoContext) RepoInfo() string {
-	tagsAndSigners =
+	tagsAndSigners := "" // FIXME
 	return fmt.Sprintf("Repo: %s, Root key: %s, Repo key: %s, Tags & Signers: %s", c.k.RepoInfo.Image, c.k.RepoInfo.Root, c.k.RepoInfo.Repo, tagsAndSigners)
 }
 

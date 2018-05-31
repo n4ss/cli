@@ -205,7 +205,6 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
 		}
 	}
 
-	fmt.Fprintln(dockerCli.Out(), "getKeysInfoFromKeyStore - end")
 	return keyIDToImageKeysInfo, nil
 
 	// Current format
@@ -297,6 +296,15 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
  }
 
  func prettyPrintKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, verbose bool) error {
- 	// TODO(nass) use formatter package
+ 	for key, keyInfo := range keysInfo {
+ 		fmt.Fprintf(dockerCli.Out(),"key: %s\n", key)
+ 		if len(keyInfo.Roles) != 0 {
+			fmt.Fprintf(dockerCli.Out(),"\troles: %s\n", keyInfo.Roles[0])
+		}
+		if len(keyInfo.RepoInfo.Image) != 0 {
+			fmt.Fprintf(dockerCli.Out(), "\trepository: %s\n", keyInfo.RepoInfo.Image)
+		}
+
+	}
  	return nil
  }
