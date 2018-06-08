@@ -101,6 +101,11 @@ func (commonOpts *CommonOptions) SetDefaultOptions(flags *pflag.FlagSet) {
 				tlsOptions.KeyFile = ""
 			}
 		}
+		if !flags.Changed("tlscacert") {
+			if _, err := os.Stat(tlsOptions.CAFile); os.IsNotExist(err) {
+				tlsOptions.CAFile = ""
+			}
+		}
 	}
 }
 

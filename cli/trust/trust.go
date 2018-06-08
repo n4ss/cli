@@ -2,6 +2,7 @@ package trust
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"github.com/docker/distribution/registry/client/auth/challenge"
 	"github.com/docker/distribution/registry/client/transport"
 	"github.com/docker/docker/api/types"
+	cliflags "github.com/docker/cli/cli/flags"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/registry"
 	"github.com/docker/go-connections/tlsconfig"
@@ -96,13 +98,23 @@ func (scs simpleCredentialStore) SetRefreshToken(*url.URL, string, string) {
 // GetNotaryRepository returns a NotaryRepository which stores all the
 // information needed to operate on a notary repository.
 // It creates an HTTP transport providing authentication support.
-func GetNotaryRepository(in io.Reader, out io.Writer, userAgent string, repoInfo *registry.RepositoryInfo, authConfig *types.AuthConfig, actions ...string) (client.Repository, error) {
+func GetNotaryRepository(in io.Reader, out io.Writer, userAgent string, repoInfo *registry.RepositoryInfo, authConfig *types.AuthConfig, cliOpts *cliflags.ClientOptions, actions ...string) (client.Repository, error) {
+	var cfg *tls.Config
+
 	server, err := Server(repoInfo.Index)
 	if err != nil {
 		return nil, err
 	}
 
-	var cfg = tlsconfig.ClientDefault()
+	if cliOpts == nil || cliOpts.Common == nil || cliOpts.Common.TLSOptions == nil {
+		cfg = tlsconfig.ClientDefault()
+	} else {
+		cfg, err = tlsconfig.Client(*cliOpts.Common.TLSOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	cfg.InsecureSkipVerify = !repoInfo.Index.Secure
 
 	// Get certificate base directory

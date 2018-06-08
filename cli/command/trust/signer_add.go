@@ -67,6 +67,7 @@ func addSigner(cli command.Cli, options signerAddOptions) error {
 	var errRepos []string
 	for _, repoName := range options.repos {
 		fmt.Fprintf(cli.Out(), "Adding signer \"%s\" to %s...\n", signerName, repoName)
+		fmt.Fprintf(cli.Out(), "\n\n*************************** cli opts: %v *********************** \n\n", cli.Opts())
 		if err := addSignerToRepo(cli, signerName, repoName, signerPubKeys); err != nil {
 			fmt.Fprintln(cli.Err(), err.Error()+"\n")
 			errRepos = append(errRepos, repoName)

@@ -69,7 +69,7 @@ func runPush(dockerCli command.Cli, opts pushOptions) error {
 
 	if !opts.untrusted {
 		repoInfo.Class = "plugin"
-		return image.PushTrustedReference(dockerCli, repoInfo, named, authConfig, responseBody)
+		return image.PushTrustedReference(dockerCli, repoInfo, named, authConfig, responseBody, dockerCli.Opts())
 	}
 
 	return jsonmessage.DisplayJSONMessagesToStream(responseBody, dockerCli.Out(), nil)

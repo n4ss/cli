@@ -29,6 +29,7 @@ import (
 	"github.com/theupdateframework/notary"
 	notaryclient "github.com/theupdateframework/notary/client"
 	"github.com/theupdateframework/notary/passphrase"
+	"fmt"
 )
 
 // Streams is an interface which exposes the standard input and output streams
@@ -53,6 +54,7 @@ type Cli interface {
 	ManifestStore() manifeststore.Store
 	RegistryClient(bool) registryclient.RegistryClient
 	ContentTrustEnabled() bool
+	Opts() *cliflags.ClientOptions
 }
 
 // DockerCli is an instance the docker command line client.
@@ -66,6 +68,7 @@ type DockerCli struct {
 	serverInfo   ServerInfo
 	clientInfo   ClientInfo
 	contentTrust bool
+	opts 		 *cliflags.ClientOptions
 }
 
 // DefaultVersion returns api.defaultVersion or DOCKER_API_VERSION if specified.
@@ -96,6 +99,11 @@ func (cli *DockerCli) SetIn(in *InStream) {
 // In returns the reader used for stdin
 func (cli *DockerCli) In() *InStream {
 	return cli.in
+}
+
+// Opts returns the CLI-wide options
+func (cli *DockerCli) Opts() *cliflags.ClientOptions {
+	return cli.opts
 }
 
 // ShowHelp shows the command help.
@@ -148,6 +156,12 @@ func (cli *DockerCli) RegistryClient(allowInsecure bool) registryclient.Registry
 // line flags are parsed.
 func (cli *DockerCli) Initialize(opts *cliflags.ClientOptions) error {
 	cli.configFile = cliconfig.LoadDefaultConfigFile(cli.err)
+
+	fmt.Printf("************ Initialize: cli.opts: %v, opts.common.tls: %v\n", cli.opts, opts.Common.TLSOptions)
+	// Store CLI-wide options for subcommands to access
+	cli.opts = opts
+
+	fmt.Printf("************ Initialize: cli.opts: %v, opts.common.tls: %v\n", cli.opts, opts.Common.TLSOptions)
 
 	var err error
 	cli.client, err = NewAPIClientFromFlags(opts.Common, cli.configFile)
@@ -225,7 +239,7 @@ func getClientWithPassword(passRetriever notary.PassRetriever, newClient func(pa
 
 // NotaryClient provides a Notary Repository to interact with signed metadata for an image
 func (cli *DockerCli) NotaryClient(imgRefAndAuth trust.ImageRefAndAuth, actions []string) (notaryclient.Repository, error) {
-	return trust.GetNotaryRepository(cli.In(), cli.Out(), UserAgent(), imgRefAndAuth.RepoInfo(), imgRefAndAuth.AuthConfig(), actions...)
+	return trust.GetNotaryRepository(cli.In(), cli.Out(), UserAgent(), imgRefAndAuth.RepoInfo(), imgRefAndAuth.AuthConfig(), cli.opts, actions...)
 }
 
 // ServerInfo stores details about the supported features and platform of the
@@ -281,7 +295,7 @@ func NewAPIClientFromFlags(opts *cliflags.CommonOptions, configFile *configfile.
 	}
 
 	return client.NewClientWithOpts(
-		withHTTPClient(opts.TLSOptions),
+		withHTTPSClient(opts.TLSOptions),
 		client.WithHTTPHeaders(customHeaders),
 		client.WithVersion(verStr),
 		client.WithHost(host),
@@ -302,7 +316,7 @@ func getServerHost(hosts []string, tlsOptions *tlsconfig.Options) (string, error
 	return dopts.ParseHost(tlsOptions != nil, host)
 }
 
-func withHTTPClient(tlsOpts *tlsconfig.Options) func(*client.Client) error {
+func withHTTPSClient(tlsOpts *tlsconfig.Options) func(*client.Client) error {
 	return func(c *client.Client) error {
 		if tlsOpts == nil {
 			// Use the default HTTPClient

@@ -20,6 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/theupdateframework/notary/client"
 	"github.com/theupdateframework/notary/tuf/data"
+	"github.com/docker/cli/cli/flags"
 )
 
 type target struct {
@@ -37,12 +38,12 @@ func TrustedPush(ctx context.Context, cli command.Cli, repoInfo *registry.Reposi
 
 	defer responseBody.Close()
 
-	return PushTrustedReference(cli, repoInfo, ref, authConfig, responseBody)
+	return PushTrustedReference(cli, repoInfo, ref, authConfig, responseBody, cli.Opts())
 }
 
 // PushTrustedReference pushes a canonical reference to the trust server.
 // nolint: gocyclo
-func PushTrustedReference(streams command.Streams, repoInfo *registry.RepositoryInfo, ref reference.Named, authConfig types.AuthConfig, in io.Reader) error {
+func PushTrustedReference(streams command.Streams, repoInfo *registry.RepositoryInfo, ref reference.Named, authConfig types.AuthConfig, in io.Reader, options *flags.ClientOptions) error {
 	// If it is a trusted push we would like to find the target entry which match the
 	// tag provided in the function and then do an AddTarget later.
 	target := &client.Target{}
@@ -102,7 +103,7 @@ func PushTrustedReference(streams command.Streams, repoInfo *registry.Repository
 
 	fmt.Fprintln(streams.Out(), "Signing and pushing trust metadata")
 
-	repo, err := trust.GetNotaryRepository(streams.In(), streams.Out(), command.UserAgent(), repoInfo, &authConfig, "push", "pull")
+	repo, err := trust.GetNotaryRepository(streams.In(), streams.Out(), command.UserAgent(), repoInfo, &authConfig, options, "push", "pull")
 	if err != nil {
 		return errors.Wrap(err, "error establishing connection to trust repository")
 	}

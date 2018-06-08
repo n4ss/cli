@@ -51,20 +51,28 @@ func newDockerCommand(dockerCli *command.DockerCli) *cobra.Command {
 	flags.StringVar(&opts.ConfigDir, "config", cliconfig.Dir(), "Location of client config files")
 	opts.Common.InstallFlags(flags)
 
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
+
 	// Install persistent flags
 	persistentFlags := cmd.PersistentFlags()
 	persistentFlags.StringVar(&opts.Common.Orchestrator, "orchestrator", "", "Orchestrator to use (swarm|kubernetes|all)")
 	persistentFlags.SetAnnotation("orchestrator", "top-level", []string{"version", "stack"})
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
 
 	setFlagErrorFunc(dockerCli, cmd, flags, opts)
 
 	setHelpFunc(dockerCli, cmd, flags, opts)
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
 
 	cmd.SetOutput(dockerCli.Out())
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
 	commands.AddCommands(cmd, dockerCli)
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
 
 	disableFlagsInUseLine(cmd)
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
 	setValidateArgs(dockerCli, cmd, flags, opts)
+	fmt.Printf("\n\n*********** newDockerCommand ********* tlscacert: %v *********************** \n\n", opts.Common.TLSOptions.CAFile)
 
 	return cmd
 }
@@ -133,6 +141,8 @@ func setValidateArgs(dockerCli *command.DockerCli, cmd *cobra.Command, flags *pf
 }
 
 func initializeDockerCli(dockerCli *command.DockerCli, flags *pflag.FlagSet, opts *cliflags.ClientOptions) {
+	fmt.Printf("\n\n*********** initializeDockerCli ********* cliOpts: %v, opts: %v *********************** \n\n", dockerCli.Opts(), opts)
+
 	if dockerCli.Client() == nil { // when using --help, PersistentPreRun is not called, so initialization is needed.
 		// flags must be the top-level command flags, not cmd.Flags()
 		opts.Common.SetDefaultOptions(flags)
