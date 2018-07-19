@@ -5,23 +5,31 @@ import (
 	"strings"
 
 	"github.com/docker/docker/pkg/stringid"
-	"github.com/theupdateframework/notary/tuf/data"
 	"fmt"
+	"github.com/theupdateframework/notary/tuf/data"
 )
 
 const (
-	defaultTrustTagTableFormat   = "table {{.SignedTag}}\t{{.Digest}}\t{{.Signers}}"
-	signedTagNameHeader          = "SIGNED TAG"
-	trustedDigestHeader          = "DIGEST"
-	signersHeader                = "SIGNERS"
-	defaultSignerInfoTableFormat = "table {{.Signer}}\t{{.Keys}}"
-	signerNameHeader             = "SIGNER"
-	keysHeader                   = "KEYS"
-	keyInfoTableVerboseFormat    = "table {{.Id}}\t{{.Roles}}\t{{.RepoInfo}}"
-	defaultKeyInfoTableFormat    = "table {{.Id}}\t{{.Roles}}"
-	keyIDHeader					 = "KEY ID"
-	repoInfoHeader               = "REPO INFO"
-	rolesHeader					 = "ROLES"
+	defaultTrustTagTableFormat    = "table {{.SignedTag}}\t{{.Digest}}\t{{.Signers}}"
+	signedTagNameHeader           = "SIGNED TAG"
+	trustedDigestHeader           = "DIGEST"
+	signersHeader                 = "SIGNERS"
+	defaultSignerInfoTableFormat  = "table {{.Signer}}\t{{.Keys}}"
+	signerNameHeader              = "SIGNER"
+	keysHeader                    = "KEYS"
+	keyInfoTableVerboseFormat     = "table {{.Id}}\t{{.Roles}}\t{{.RepoInfo}}"
+	defaultKeyInfoTableFormat     = "table {{.Id}}\t{{.Roles}}"
+	keyIDHeader					  = "KEY ID"
+	repoInfoHeader                = "REPO INFO"
+	rolesHeader					  = "ROLES"
+	keysListPrettyTemplate Format = `Key ID:		{{.Id}}
+Signers:		{{ .Roles }}
+{{- if .RepoInfo }}
+Repo Info:
+{{- range $repo_info := .RepoInfo }}
+
+{{- end }}
+`
 )
 
 // SignedTagInfo represents all formatted information needed to describe a signed tag:
@@ -188,8 +196,6 @@ func (signerInfoComp SignerInfoList) Swap(i, j int) {
 	signerInfoComp[i], signerInfoComp[j] = signerInfoComp[j], signerInfoComp[i]
 }
 
-type keyInfoHeaderContext map[string]string
-
 type keyInfoContext struct {
 	HeaderContext
 	k KeyInfo
@@ -200,15 +206,105 @@ func (c *keyInfoContext) Id() string {
 }
 
 func (c *keyInfoContext) RepoInfo() string {
-	tagsAndSigners := "" // FIXME
-	return fmt.Sprintf("Repo: %s, Root key: %s, Repo key: %s, Tags & Signers: %s", c.k.RepoInfo.Image, c.k.RepoInfo.Root, c.k.RepoInfo.Repo, tagsAndSigners)
+	prev := false
+	repoInfo := ""
+	if len(c.k.RepoInfo.Image) != 0 {
+		repoInfo += fmt.Sprintf("\tRepo: %s", c.k.RepoInfo.Image)
+		prev = true
+	}
+	if len(c.k.RepoInfo.Root) != 0 {
+		if prev {
+			repoInfo += "\n\t"
+		}
+		repoInfo += fmt.Sprintf("Root key: %s", c.k.RepoInfo.Root)
+		prev = true
+	}
+	if len(c.k.RepoInfo.Repo) != 0 {
+		if prev {
+			repoInfo += "\n\t"
+		}
+		repoInfo += fmt.Sprintf("Repository key: %s", c.k.RepoInfo.Repo)
+		prev = true
+	}
+	if len(c.k.RepoInfo.Repo) != 0 {
+		if prev {
+			repoInfo += "\n\t"
+		}
+		repoInfo += fmt.Sprintf("Repository key: %s", c.k.RepoInfo.Repo)
+		prev = true
+	}
+	if len(c.k.RepoInfo.TagsToSigners) != 0 {
+		if prev {
+			repoInfo += "\n\t"
+		}
+		repoInfo += "Tags and Signers: "
+		for i := 0; i < len(c.k.RepoInfo.TagsToSigners) - 1; i++ {
+			signers := ""
+			for index, signer := range c.k.RepoInfo.TagsToSigners[i].Signers {
+				signers += signer
+				if index < len(c.k.RepoInfo.TagsToSigners[i].Signers) - 1 {
+					signers += ","
+				}
+			}
+
+			repoInfo += fmt.Sprintf("[%s-sha256@%s]:(%s), ",
+				c.k.RepoInfo.TagsToSigners[i].Name,
+				c.k.RepoInfo.TagsToSigners[i].Digest[0:6],
+				signers) // FIXME
+		}
+
+		lastPos := len(c.k.RepoInfo.TagsToSigners)-1
+		signersLastPos := ""
+		for index, signer := range c.k.RepoInfo.TagsToSigners[lastPos].Signers {
+			signersLastPos += signer
+			if index < lastPos {
+				signersLastPos += ","
+			}
+		}
+		repoInfo += fmt.Sprintf("%s[sha256@%s]:(%s)",
+			c.k.RepoInfo.TagsToSigners[lastPos].Name,
+			c.k.RepoInfo.TagsToSigners[lastPos].Digest[0:6],
+			signersLastPos)
+	}
+	return repoInfo
 }
 
-// KeyInfoWrite writes the context for a key info
-func KeyInfoWrite(ctx Context, keyInfo KeyInfo) error {
+func (c *keyInfoContext) Roles() string {
+	rolesString := ""
+	if len(c.k.Roles) == 0 {
+		return rolesString
+	}
+
+	for i := 0; i < len(c.k.Roles) - 1; i++ {
+		rolesString += string(c.k.Roles[i]) + ", "
+	}
+
+	rolesString += string(c.k.Roles[len(c.k.Roles) - 1])
+
+	return rolesString
+}
+
+func NewTrustKeysFormat(format string, verbose bool) Format {
+	switch format {
+	case PrettyFormatKey:
+		return keysListPrettyTemplate
+	case TableFormatKey:
+		if verbose {
+			return keyInfoTableVerboseFormat
+		}
+		return defaultKeyInfoTableFormat
+	}
+	return Format(format)
+}
+
+// KeyListWrite writes the context for a key info
+func NewTrustKeysWrite(ctx Context, keysInfo []KeyInfo) error {
 	render := func(format func(subCtx subContext) error) error {
-		if err := format(&keyInfoContext{k: keyInfo}); err != nil {
-			return err
+		for _, keyInfo := range keysInfo {
+
+			if err := format(&keyInfoContext{k: keyInfo}); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -222,3 +318,5 @@ func KeyInfoWrite(ctx Context, keyInfo KeyInfo) error {
 	}
 	return ctx.Write(&keyInfoCtx, render)
 }
+
+type keyInfoHeaderContext map[string]string

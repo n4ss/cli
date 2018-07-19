@@ -61,7 +61,12 @@ func listKeys(dockerCli command.Cli, options keyListOptions) error {
 		return err
 	}
 
-	err = printKeysInfo(dockerCli, keysInfo, options.format, options.verbose)
+	var keysInfoList []formatter.KeyInfo
+	for _, keyInfo := range keysInfo {
+		keysInfoList = append(keysInfoList, keyInfo)
+	}
+
+	err = printKeysInfo(dockerCli, keysInfoList, options.format, options.verbose)
 	if err != nil {
 		return err
 	}
@@ -154,7 +159,7 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
 			// Get signed tags for the key & key roles info once per GUN
 			trustTags, adminRolesWithSigs, delegationRoles, err := lookupTrustInfo(dockerCli, string(info.Gun))
 			if err != nil {
-				return nil, err
+				continue
 			}
 
 			for _, trustTag := range trustTags {
@@ -263,7 +268,7 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
 	// +--------+-------------+
  }
 
- func printKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, format string, verbose bool) error {
+ func printKeysInfo(dockerCli command.Cli, keysInfo []formatter.KeyInfo, format string, verbose bool) error {
  	switch format {
 	case jsonFormat:
 		return jsonPrintKeysInfo(dockerCli, keysInfo, verbose)
@@ -274,7 +279,7 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
 	}
  }
 
- func jsonPrintKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, verbose bool) error {
+ func jsonPrintKeysInfo(dockerCli command.Cli, keysInfo []formatter.KeyInfo, verbose bool) error {
  	 var infoList []formatter.KeyInfo
 	 for _, info := range keysInfo {
 	 	newInfo := info
@@ -295,7 +300,8 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
  	return nil
  }
 
- func prettyPrintKeysInfo(dockerCli command.Cli, keysInfo map[string]formatter.KeyInfo, verbose bool) error {
+func prettyPrintKeysInfo(dockerCli command.Cli, keysInfo []formatter.KeyInfo, verbose bool) error {
+	/*
  	for key, keyInfo := range keysInfo {
  		fmt.Fprintf(dockerCli.Out(),"key: %s\n", key)
  		if len(keyInfo.Roles) != 0 {
@@ -304,7 +310,11 @@ func getKeysInfoFromKeyStore(dockerCli command.Cli, ks trustmanager.KeyStore, ve
 		if len(keyInfo.RepoInfo.Image) != 0 {
 			fmt.Fprintf(dockerCli.Out(), "\trepository: %s\n", keyInfo.RepoInfo.Image)
 		}
+	}*/
 
+	keysCtx := formatter.Context{
+		Output: dockerCli.Out(),
+		Format: formatter.NewTrustKeysFormat(formatter.PrettyFormatKey, verbose),
 	}
- 	return nil
+ 	return formatter.NewTrustKeysWrite(keysCtx, keysInfo)
  }
